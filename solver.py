@@ -57,30 +57,143 @@ class DamageEvent(object):
             return int(self.get_damage() * (1.0 - mitigation.magical_multiplier))
         else:
             return 0
+        
+class DamageEvents(object):
+    """
+    This class encapsulates a list of DamageEvents, and provides some useful
+    utility functions that operate on the collection.
+    """
+    def __init__(self, filename):
+        self.damage_events = []
+        with open(filename, "r") as f:
+            for event_info in yaml.safe_load(f):
+                damage_event = DamageEvent(event_info["name"], 
+                                           event_info["time"], 
+                                           event_info["damage"], 
+                                           DamageType.UNIQUE)
+            
+                if event_info["damage_type"] == "physical":
+                    damage_event.damage_type = DamageType.PHYSICAL
+                elif event_info["damage_type"] == "magical":
+                    damage_event.damage_type = DamageType.MAGICAL
 
+                self.damage_events.append(damage_event)
+
+    def __iter__(self):
+        return self.damage_events.__iter__()
+    
+    def __next__(self):
+        return self.damage_events.__next__()
+
+    def has_lethal_damage(self, effective_hp: int) -> bool:
+        """
+        Returns true if any damage event is lethal.
+        """
+        for event in self.damage_events:
+            if event.get_damage() >= effective_hp:
+                return True
+        return False
+
+    def get_most_effective_mitigation_for_event(self, 
+                                                mitigations: List[Mitigation], 
+                                                damage_event: DamageEvent) -> tuple[DamageEvent, Mitigation, int]:
+        """
+        Identify the starting damage event and mitigation that would reduce the
+        most damage for a specified damage event.
+
+        Note that this may mean that the mitigation should be used at an earlier damage event
+        if it will also cover the specified event.
+
+        Returns a tuple containing:
+            - The damage event the mitigation should be applied on (but will still mitigate the input damage_event)
+            - The mitigation that should be used
+            - The total amount of damage mitigated as a result
+        """
+        best_mitigation = None
+        best_mitigated_event = None
+        best_mitigation_score = -9999
+
+        for mitigation in mitigations:
+            # check to see if the mitigation is on cooldown
+            if not self.mitigation_available_for_event(damage_event, mitigation):
+                continue
+
+            # Consider all events that would also mitigate the specified damage event
+            for event in self.damage_events:
+                if (event.time <= damage_event.time - mitigation.duration or event.time > damage_event.time):
+                    continue
+
+                mitigated_damage = self.get_mitigated_damage(mitigation, event)
+                if mitigated_damage > 0 and mitigated_damage > best_mitigation_score:
+                    best_mitigation_score = mitigated_damage
+                    best_mitigation = mitigation
+                    best_mitigated_event = event
+
+        return best_mitigated_event, best_mitigation, best_mitigation_score
+
+    def get_mitigated_damage(self, 
+                             mitigation: Mitigation, 
+                             damage_event: DamageEvent) -> int:
+        """
+        Calculates the damage mitigated assuming the mitigation is used at the
+        specified damage event.
+
+        Returns the total damage mitigated.
+        """
+        total_damage_reduced = 0
+
+        for event in self.damage_events:
+            if damage_event.time <= event.time and event.time < damage_event.time + mitigation.duration:
+                total_damage_reduced += self.score_mitigation(mitigation, event)
+
+        return total_damage_reduced
+
+    def score_mitigation(self, mitigation: Mitigation, damage_event: DamageEvent) -> int:
+        """
+        Returns the total damage reduced if the mitigation was used at the 
+        provided damage event.
+        """
+        total_damage_reduced = 0
+        for event in self.damage_events:
+            if (event.time >= damage_event.time and event.time < damage_event.time + mitigation.duration):
+                total_damage_reduced += event.apply_mitigation(mitigation)
+
+        return total_damage_reduced
+    
+    def get_max_overkill_event(self, effective_hp: int) -> Optional[DamageEvent]:
+        max_overkill_damage = None
+        max_overkill_event = None
+
+        for event in self.damage_events:
+            # identify the event that has the most overkill damage
+            overkill_damage = event.get_damage() - effective_hp
+            if max_overkill_damage is None or (overkill_damage >= 0 and overkill_damage > max_overkill_damage):
+                max_overkill_damage = overkill_damage
+                max_overkill_event = event
+
+        return max_overkill_event
+    
+    def apply_mitigation(self, mitigation: Mitigation, damage_event: DamageEvent) -> None:
+        """
+        Applies a mitigation to the specified event, and any other events that
+        fall within the mitigation's duration.
+        """
+        mitigation.used_times.append(damage_event.time)
+        for event in self.damage_events:
+            if event.time >= damage_event.time and event.time < damage_event.time + mitigation.duration:
+                event.mitigations.append(mitigation)
+
+    @staticmethod
+    def mitigation_available_for_event(damage_event: DamageEvent, mitigation: Mitigation) -> bool:
+        for used_time in mitigation.used_times:
+            if abs(damage_event.time - used_time) < mitigation.recast:
+                return False
+        return True
 
 def load_party_config(filename: str) -> dict:
     with open(filename, "r") as f:
         return yaml.safe_load(f)
-    
 
-def load_damage_events(filename: str) -> List[DamageEvent]:
-    with open(filename, "r") as f:
-        events = []
-        for event in yaml.safe_load(f):
-            ev = DamageEvent(event["name"],
-                             event["time"],
-                             event["damage"],
-                             DamageType.UNIQUE)
-            
-            if event["damage_type"] == "physical":
-                ev.damage_type = DamageType.PHYSICAL
-            elif event["damage_type"] == "magical":
-                ev.damage_type = DamageType.MAGICAL
-
-            events.append(ev)
-
-        return events
 
 def load_mitigations(filename: str, buffer: int) -> List[Mitigation]:
     """
@@ -105,129 +218,43 @@ def load_mitigations(filename: str, buffer: int) -> List[Mitigation]:
                                     mit["physical_multiplier"], 
                                     mit["magical_multiplier"], 
                                     max(1, mit["duration"] - buffer),
-                                    mit["recast"])
+                                    mit["recast"] - buffer)
             mitigations.append(mitigation)
 
         mitigations.sort(key=lambda m: m.recast, reverse=False)
         return mitigations
-    
-def score_mitigation(mitigation: Mitigation, damage_event: DamageEvent, damage_events: List[DamageEvent]) -> int:
-    """
-    Returns the total damage reduced if the mitigation was used at the damage
-    event at the provided index.
-    """
-    total_damage_reduced = 0
-    for event in damage_events:
-        if (event.time >= damage_event.time and event.time < damage_event.time + mitigation.duration):
-            total_damage_reduced += event.apply_mitigation(mitigation)
 
-    return total_damage_reduced
-
-def get_max_overkill_event(effective_hp: int, damage_events: List[DamageEvent]) -> Optional[DamageEvent]:
-    max_overkill_damage = None
-    max_overkill_event = None
-
-    for event in damage_events:
-        # identify the event that has the most overkill damage
-        overkill_damage = event.get_damage() - effective_hp
-        if max_overkill_damage is None or (overkill_damage >= 0 and overkill_damage > max_overkill_damage):
-            max_overkill_damage = overkill_damage
-            max_overkill_event = event
-
-    return max_overkill_event
-
-    
-def get_mitigated_damage(mitigation: Mitigation, damage_event: DamageEvent, 
-                         damage_events: List[DamageEvent]) -> int:
-    """
-    Calculates the damage mitigated assuming the mitigation is used at the
-    specified starting damage event index."""
-    total_damage_reduced = 0
-
-    for event in damage_events:
-        if damage_event.time <= event.time and event.time < damage_event.time + mitigation.duration:
-            total_damage_reduced += score_mitigation(mitigation, event, damage_events)
-
-    return total_damage_reduced
-
-
-def mitigation_available_for_event(damage_event: DamageEvent, mitigation: Mitigation) -> bool:
-    for used_time in mitigation.used_times:
-        if abs(damage_event.time - used_time) < mitigation.recast:
-            return False
-    return True
-
-
-def get_most_effective_mitigation_for_event(mitigations: List[Mitigation], damage_event: DamageEvent,
-                                            damage_events: List[DamageEvent]) -> tuple[DamageEvent, Mitigation, int]:
-    """
-    Identify the starting damage event and mitigation that would reduce the
-    most damage for a specified damage event.
-
-    Note that this may mean that the mitigation should be used at an earlier damage event
-    if it will also cover the specified event.
-    """
-    best_mitigation = None
-    best_mitigated_event = None
-    best_mitigation_score = -9999
-
-    for mitigation in mitigations:
-        # check to see if the mitigation is on cooldown
-        if not mitigation_available_for_event(damage_event, mitigation):
-            continue
-
-        # Consider all events that would also mitigate the specified damage event
-        for event in damage_events:
-            if (event.time <= damage_event.time - mitigation.duration or event.time > damage_event.time):
-                continue
-
-            mitigated_damage = get_mitigated_damage(mitigation, event, damage_events)
-            if mitigated_damage > 0 and mitigated_damage > best_mitigation_score:
-                best_mitigation_score = mitigated_damage
-                best_mitigation = mitigation
-                best_mitigated_event = event
-
-    return best_mitigated_event, best_mitigation, best_mitigation_score
-
-def is_lethal_damage(damage_events: List[DamageEvent], effective_hp: int) -> bool:
-    for event in damage_events:
-        if event.get_damage() >= effective_hp:
-            return True
-    return False
     
 if __name__ == "__main__":
     party_config = load_party_config("party_config.yaml")
     mitigations = load_mitigations("mitigation_config.yaml", party_config["buffer"])
-    damage_events = load_damage_events("damage_events.yaml")
+    damage_events = DamageEvents("damage_events.yaml")
 
     effective_hp = party_config["max_hp"] + party_config["shield_strength"]
 
-    while is_lethal_damage(damage_events, effective_hp):
+    while damage_events.has_lethal_damage(effective_hp):
         # 1. Identify the event that has the most overkill damage
-        max_overkill_event = get_max_overkill_event(effective_hp, damage_events)
-        print("Max overkill event = {} (Overkill: {}, Time: {})".format(
-            max_overkill_event.name, max_overkill_event.get_damage() - effective_hp, max_overkill_event.time))
+        max_overkill_event = damage_events.get_max_overkill_event(effective_hp)
+        print("Max overkill event = {} (Time: {}, Overkill: {})".format(
+            max_overkill_event.name, max_overkill_event.time, max_overkill_event.get_damage() - effective_hp))
 
         # 2. Identify the most effective (available) mitigation that covers that event
         # Note that the returned event_idx may not be the same index as the most damaging event
         # as we could mitigate backwards (i.e: catch the most damage event with the tail end of the mitigation)
-        damage_event, most_effective_mit, mitigated_damage = get_most_effective_mitigation_for_event(
-            mitigations, max_overkill_event, damage_events)
+        most_effective_event, most_effective_mit, mitigated_damage = damage_events.get_most_effective_mitigation_for_event(
+            mitigations, max_overkill_event)
    
         if most_effective_mit is None:
             print("Out of mitigations - unsolvable!")
             break
         else:
-            print("Most effective mit = {} ({}) used at {} to reduce {} damage (existing mits: {})\n".format(
-                most_effective_mit.name, most_effective_mit.actor, damage_event.name, mitigated_damage,
-                ["{} ({})".format(m.name, m.actor) for m in damage_event.mitigations]))
+            print("{} ({}) used at {} to reduce {} damage (existing mits: {})\n".format(
+                most_effective_mit.name, most_effective_mit.actor, most_effective_event.name, mitigated_damage,
+                ["{} ({})".format(m.name, m.actor) for m in most_effective_event.mitigations]))
 
             # 3. Apply that mitigation to the event (and any other events that fall
             # in the mitigation's duration)
-            most_effective_mit.used_times.append(damage_event.time)
-            for ev in damage_events:
-                if ev.time >= damage_event.time and ev.time < damage_event.time + most_effective_mit.duration:
-                    ev.mitigations.append(most_effective_mit)
+            damage_events.apply_mitigation(most_effective_mit, most_effective_event)
 
         for damage_event in damage_events:
             if damage_event.get_damage() < effective_hp:
