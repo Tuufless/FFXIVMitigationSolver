@@ -1,0 +1,66 @@
+- name: Reprisal
+  actor: MT
+  physical_multiplier: 0.9
+  magical_multiplier: 0.9
+  duration: 10
+  recast: 60
+- name: Reprisal
+  actor: ST
+  physical_multiplier: 0.9
+  magical_multiplier: 0.9
+  duration: 10
+  recast: 60
+- name: MT 90s
+  actor: MT
+  physical_multiplier: 0.9
+  magical_multiplier: 0.9
+  duration: 1   # this is to accommodate Shake It Off/Divine Veil, which are one-time use mitigations
+  recast: 90
+- name: ST 90s
+  actor: ST
+  physical_multiplier: 0.9
+  magical_multiplier: 0.9
+  duration: 1   # this is to accommodate Shake It Off/Divine Veil, which are one-time use mitigations
+  recast: 90
+- name: H1 120s
+  actor: H1
+  physical_multiplier: 0.9
+  magical_multiplier: 0.9
+  duration: 20
+  recast: 120
+- name: H2 30s
+  actor: H2
+  physical_multiplier: 0.9
+  magical_multiplier: 0.9
+  duration: 15
+  recast: 30
+- name: H2 120s
+  actor: H2
+  physical_multiplier: 0.9
+  magical_multiplier: 0.9
+  duration: 20
+  recast: 120
+- name: Feint
+  actor: D1
+  physical_multiplier: 0.9
+  magical_multiplier: 0.95
+  duration: 10
+  recast: 90
+- name: Feint
+  actor: D2
+  physical_multiplier: 0.9
+  magical_multiplier: 0.95
+  duration: 10
+  recast: 90
+- name: Tactician
+  actor: D3
+  physical_multiplier: 0.9
+  magical_multiplier: 0.9
+  duration: 15
+  recast: 90
+- name: Addle
+  actor: D4
+  physical_multiplier: 0.95
+  magical_multiplier: 0.9
+  duration: 10
+  recast: 90

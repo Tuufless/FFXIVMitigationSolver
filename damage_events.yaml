@@ -1,0 +1,40 @@
+- name: Cosmo Memory
+  time: 0
+  damage: 79600  # 398000 * 0.2 (tank LB3)
+  damage_type: magical
+- name: Cosmo Dive 1
+  time: 30
+  damage: 103500
+  damage_type: magical
+- name: Wave Cannon 1 (spread)
+  time: 68
+  damage: 92000
+  damage_type: magical
+- name: Wave Cannon 1 (stack)
+  time: 76
+  damage: 117500
+  damage_type: magical
+- name: Wave Cannon 2 (spread)
+  time: 101
+  damage: 92000
+  damage_type: magical
+- name: Wave Cannon 2 (stack)
+  time: 110
+  damage: 117500
+  damage_type: magical
+- name: Cosmo Dive 2
+  time: 144
+  damage: 103500
+  damage_type: magical
+- name: Cosmo Meteor 1
+  time: 169
+  damage: 111000
+  damage_type: magical
+- name: Cosmo Meteor 2
+  time: 175
+  damage: 111000
+  damage_type: magical
+- name: Cosmo Meteor (Flares)
+  time: 187
+  damage: 78000
+  damage_type: magical
