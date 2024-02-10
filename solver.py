@@ -30,10 +30,9 @@ def load_mitigations(filename: str, buffer: int) -> List[Mitigation]:
                                     mit["physical_multiplier"], 
                                     mit["magical_multiplier"], 
                                     max(1, mit["duration"] - buffer),
-                                    mit["recast"] - buffer)
+                                    mit["recast"])
             mitigations.append(mitigation)
 
-        # mitigations.sort(key=lambda m: m.recast, reverse=False)
         random.shuffle(mitigations)
 
         return mitigations
@@ -45,6 +44,19 @@ if __name__ == "__main__":
     damage_events = DamageEvents("damage_events.yaml")
 
     effective_hp = party_config["max_hp"] + party_config["shield_strength"]
+
+    if damage_events.has_lethal_damage(effective_hp):
+        # 1. Maximise use of mitigations with shorter cooldowns
+        shorter_mits = [m for m in mitigations if m.recast <= 30]
+        mitigations.sort(key=lambda m: m.recast)
+
+        # Apply short mitigations to anything lethal
+        for mitigation in shorter_mits:
+            for damage_event in damage_events:
+                if damage_event.is_lethal(effective_hp):
+                    damage_events.apply_mitigation(mitigation, damage_event)
+
+    random.shuffle(mitigations)
 
     iteration = 0
 
@@ -76,14 +88,14 @@ if __name__ == "__main__":
 
         for damage_event in damage_events:
             if damage_event.get_damage() < effective_hp:
-                print("  [{:3}] {:25} - Damage = {},{}Mitigations: {}".format(
+                print("  [{:3}] {:25} - Damage = {:6},{}Mitigations: {}".format(
                     damage_event.time, 
                     damage_event.name, 
                     damage_event.get_damage(),
                     " " * 19,
                     ["{} ({})".format(m.name, m.actor) for m in damage_event.mitigations]))
             else:
-                print("* [{:3}] {:25} - Damage = {} (Overkill: {:5}), Mitigations: {}".format(
+                print("* [{:3}] {:25} - Damage = {:6} (Overkill: {:5}), Mitigations: {}".format(
                     damage_event.time, 
                     damage_event.name, 
                     damage_event.get_damage(), 

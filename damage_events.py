@@ -58,6 +58,12 @@ class DamageEvent(object):
         else:
             return 0
         
+    def is_lethal(self, effective_hp: int) -> bool:
+        """
+        Returns true if any damage event is lethal.
+        """
+        return self.get_damage() >= effective_hp
+        
 class DamageEvents(object):
     """
     This class encapsulates a list of DamageEvents, and provides some useful
@@ -90,7 +96,7 @@ class DamageEvents(object):
         Returns true if any damage event is lethal.
         """
         for event in self.damage_events:
-            if event.get_damage() >= effective_hp:
+            if event.is_lethal(effective_hp):
                 return True
         return False
 
@@ -178,6 +184,15 @@ class DamageEvents(object):
         Applies a mitigation to the specified event, and any other events that
         fall within the mitigation's duration.
         """
+        # Don't do anything if the mitigation is already applied
+        if mitigation.name in [m.name for m in damage_event.mitigations]:
+            return
+        
+        # Don't do anything if the mitigation is on cooldown
+        for t in mitigation.used_times:
+            if t <= damage_event.time and damage_event.time < t + mitigation.recast:
+                return
+
         mitigation.used_times.append(damage_event.time)
         for event in self.damage_events:
             if event.time >= damage_event.time and event.time < damage_event.time + mitigation.duration:
